@@ -1,6 +1,6 @@
 using Serilog;
 
-namespace IlsSilentPrint;
+namespace IlsEggingenSilentPrint;
 
 public static class PrintServer
 {

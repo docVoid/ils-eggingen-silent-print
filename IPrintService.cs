@@ -1,4 +1,4 @@
-namespace IlsSilentPrint;
+namespace IlsEggingenSilentPrint;
 
 public interface IPrintService : IDisposable
 {

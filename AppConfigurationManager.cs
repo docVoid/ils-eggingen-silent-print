@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Serilog;
 
-namespace IlsSilentPrint;
+namespace IlsEggingenSilentPrint;
 
 public sealed class AppConfigurationManager : IPrintConfigurationManager
 {

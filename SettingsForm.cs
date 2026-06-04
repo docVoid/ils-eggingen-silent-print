@@ -1,7 +1,7 @@
 using System.Drawing.Printing;
 using Serilog;
 
-namespace IlsSilentPrint;
+namespace IlsEggingenSilentPrint;
 
 public sealed class SettingsForm : Form
 {
@@ -91,11 +91,11 @@ public sealed class SettingsForm : Form
             AutoSize = true
         };
 
-        _cancelButton = new Button { Text = "Abbrechen", Width = 100 };
+        _cancelButton = new Button { Text = "Abbrechen", Width = 100, Height = 35 };
         _cancelButton.Click += (_, _) => Close();
         buttonPanel.Controls.Add(_cancelButton);
 
-        _saveButton = new Button { Text = "Speichern", Width = 100 };
+        _saveButton = new Button { Text = "Speichern", Width = 100, Height = 35 };
         _saveButton.Click += OnSaveClick;
         buttonPanel.Controls.Add(_saveButton);
 
