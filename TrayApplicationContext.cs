@@ -1,6 +1,6 @@
 using Serilog;
 
-namespace IlsSilentPrint;
+namespace IlsEggingenSilentPrint;
 
 public sealed class TrayApplicationContext : ApplicationContext
 {
@@ -25,7 +25,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         _trayIcon = new NotifyIcon
         {
-            Icon = CreatePrinterIcon(),
+            Icon = LoadTrayIcon(),
             Text = $"ILS Eggingen Silent Print – Drucker: {Truncate(printerDisplay, 40)}",
             Visible = true,
             ContextMenuStrip = CreateContextMenu()
@@ -34,26 +34,16 @@ public sealed class TrayApplicationContext : ApplicationContext
         _trayIcon.DoubleClick += (_, _) => ShowSettings();
     }
 
-    private static Icon CreatePrinterIcon()
+    private static Icon LoadTrayIcon()
     {
-        // Erstelle ein einfaches Drucker-Symbol programmatisch
-        var bitmap = new Bitmap(32, 32);
-        using var g = Graphics.FromImage(bitmap);
-        g.Clear(Color.Transparent);
+        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+        var resourceName = assembly.GetManifestResourceNames()
+            .First(n => n.EndsWith("tray-icon.png", StringComparison.OrdinalIgnoreCase));
 
-        // Drucker-Körper
-        g.FillRectangle(Brushes.DarkSlateGray, 4, 10, 24, 12);
-        // Papier oben
-        g.FillRectangle(Brushes.White, 8, 4, 16, 8);
-        g.DrawRectangle(Pens.Gray, 8, 4, 16, 8);
-        // Papier unten (Ausgabe)
-        g.FillRectangle(Brushes.White, 8, 20, 16, 8);
-        g.DrawRectangle(Pens.Gray, 8, 20, 16, 8);
-        // Rahmen
-        g.DrawRectangle(Pens.Black, 4, 10, 24, 12);
-
-        var handle = bitmap.GetHicon();
-        return Icon.FromHandle(handle);
+        using var stream = assembly.GetManifestResourceStream(resourceName)!;
+        using var bitmap = new Bitmap(stream);
+        using var resized = new Bitmap(bitmap, new Size(32, 32));
+        return Icon.FromHandle(resized.GetHicon());
     }
 
     private ContextMenuStrip CreateContextMenu()

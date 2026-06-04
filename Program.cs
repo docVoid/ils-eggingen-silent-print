@@ -1,7 +1,7 @@
-using IlsSilentPrint;
+using IlsEggingenSilentPrint;
 using Serilog;
 
-namespace IlsSilentPrint;
+namespace IlsEggingenSilentPrint;
 
 internal static class Program
 {

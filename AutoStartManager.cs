@@ -1,7 +1,7 @@
 using Microsoft.Win32;
 using Serilog;
 
-namespace IlsSilentPrint;
+namespace IlsEggingenSilentPrint;
 
 public static class AutoStartManager
 {

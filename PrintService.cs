@@ -2,7 +2,7 @@ using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Serilog;
 
-namespace IlsSilentPrint;
+namespace IlsEggingenSilentPrint;
 
 public sealed class PrintService : IPrintService
 {
