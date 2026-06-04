@@ -69,11 +69,25 @@ Die App startet als System-Tray-Anwendung und stellt einen lokalen HTTP-Server a
 
 ### Druckauftrag senden
 
-```bash
-curl -X POST http://localhost:9150/print \
-  -H "Content-Type: application/json" \
-  -d '{"html": "<h1>Test</h1>", "copies": 1}'
+**PowerShell:**
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:9150/print" -Method Post -ContentType "application/json" -Body '{"html": "<h1>Test</h1>", "copies": 1}'
 ```
+
+**PowerShell (Health-Check):**
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:9150/health"
+```
+
+**curl (Git Bash / CMD):**
+
+```bash
+curl -X POST http://localhost:9150/print -H "Content-Type: application/json" -d "{\"html\": \"<h1>Test</h1>\", \"copies\": 1}"
+```
+
+> **Hinweis:** In PowerShell ist `curl` ein Alias für `Invoke-WebRequest` und hat eine andere Syntax als das echte `curl`. Verwende `Invoke-RestMethod` oder `curl.exe` (mit `.exe`-Endung) für die echte curl-Syntax.
 
 ## Konfiguration
 

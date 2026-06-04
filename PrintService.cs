@@ -99,7 +99,7 @@ public sealed class PrintService : IPrintService
 
     public async Task<PrintResponse> PrintHtmlAsync(string html, int copies, CancellationToken cancellationToken = default)
     {
-        if (!_isInitialized || _webView?.CoreWebView2 is null)
+        if (!_isInitialized || _webView?.CoreWebView2 is null || _hostForm is null)
         {
             return PrintResponse.Error("WebView2 ist nicht initialisiert");
         }
@@ -107,66 +107,14 @@ public sealed class PrintService : IPrintService
         await _printSemaphore.WaitAsync(cancellationToken);
         try
         {
-            var config = _configManager.Load();
-            var printerName = GetEffectivePrinterName(config);
-
-            Log.Information("Druckauftrag gestartet: {Copies} Kopie(n) auf Drucker '{Printer}'", copies, printerName);
-
-            var navigationTcs = new TaskCompletionSource();
-            void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+            // WebView2 muss auf dem UI-Thread bedient werden.
+            // Wenn wir von einem anderen Thread kommen (z.B. Kestrel), per Invoke weiterleiten.
+            if (_hostForm.InvokeRequired)
             {
-                if (e.IsSuccess)
-                    navigationTcs.TrySetResult();
-                else
-                    navigationTcs.TrySetException(new InvalidOperationException($"Navigation fehlgeschlagen: {e.WebErrorStatus}"));
+                return await RunOnUiThreadAsync(() => ExecutePrintAsync(html, copies, cancellationToken));
             }
 
-            _webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
-            try
-            {
-                _webView.CoreWebView2.NavigateToString(html);
-
-                using var navigationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                navigationCts.CancelAfter(TimeSpan.FromSeconds(10));
-
-                await navigationTcs.Task.WaitAsync(navigationCts.Token);
-            }
-            finally
-            {
-                _webView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
-            }
-
-            // Kurz warten, damit das Rendering abgeschlossen ist
-            await Task.Delay(200, cancellationToken);
-
-            var printSettings = _webView.CoreWebView2.Environment.CreatePrintSettings();
-            printSettings.PrinterName = printerName;
-            printSettings.Copies = copies;
-            printSettings.ShouldPrintBackgrounds = true;
-            printSettings.ShouldPrintHeaderAndFooter = false;
-            printSettings.Orientation = CoreWebView2PrintOrientation.Portrait;
-            printSettings.ScaleFactor = 1.0;
-            printSettings.PageWidth = 21.0;
-            printSettings.PageHeight = 29.7;
-            printSettings.MarginTop = config.MarginTop / 10.0;
-            printSettings.MarginBottom = config.MarginBottom / 10.0;
-            printSettings.MarginLeft = config.MarginLeft / 10.0;
-            printSettings.MarginRight = config.MarginRight / 10.0;
-
-            var result = await _webView.CoreWebView2.PrintAsync(printSettings);
-
-            if (result == CoreWebView2PrintStatus.Succeeded)
-            {
-                var message = $"{copies} Kopie(n) erfolgreich gedruckt";
-                Log.Information(message);
-                return PrintResponse.Ok(message);
-            }
-            else
-            {
-                var message = $"Druck fehlgeschlagen: {result}";
-                Log.Error(message);
-                return PrintResponse.Error(message);
-            }
+            return await ExecutePrintAsync(html, copies, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -182,6 +130,90 @@ public sealed class PrintService : IPrintService
         {
             _printSemaphore.Release();
         }
+    }
+
+    private async Task<PrintResponse> ExecutePrintAsync(string html, int copies, CancellationToken cancellationToken)
+    {
+        var config = _configManager.Load();
+        var printerName = GetEffectivePrinterName(config);
+
+        Log.Information("Druckauftrag gestartet: {Copies} Kopie(n) auf Drucker '{Printer}'", copies, printerName);
+
+        var navigationTcs = new TaskCompletionSource();
+        void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            if (e.IsSuccess)
+                navigationTcs.TrySetResult();
+            else
+                navigationTcs.TrySetException(new InvalidOperationException($"Navigation fehlgeschlagen: {e.WebErrorStatus}"));
+        }
+
+        _webView!.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+        try
+        {
+            _webView.CoreWebView2.NavigateToString(html);
+
+            using var navigationCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            navigationCts.CancelAfter(TimeSpan.FromSeconds(10));
+
+            await navigationTcs.Task.WaitAsync(navigationCts.Token);
+        }
+        finally
+        {
+            _webView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
+        }
+
+        // Kurz warten, damit das Rendering abgeschlossen ist
+        await Task.Delay(200, cancellationToken);
+
+        var printSettings = _webView.CoreWebView2.Environment.CreatePrintSettings();
+        printSettings.PrinterName = printerName;
+        printSettings.Copies = copies;
+        printSettings.ShouldPrintBackgrounds = true;
+        printSettings.ShouldPrintHeaderAndFooter = false;
+        printSettings.Orientation = CoreWebView2PrintOrientation.Portrait;
+        printSettings.ScaleFactor = 1.0;
+        printSettings.PageWidth = 21.0;
+        printSettings.PageHeight = 29.7;
+        printSettings.MarginTop = config.MarginTop / 10.0;
+        printSettings.MarginBottom = config.MarginBottom / 10.0;
+        printSettings.MarginLeft = config.MarginLeft / 10.0;
+        printSettings.MarginRight = config.MarginRight / 10.0;
+
+        var result = await _webView.CoreWebView2.PrintAsync(printSettings);
+
+        if (result == CoreWebView2PrintStatus.Succeeded)
+        {
+            var message = $"{copies} Kopie(n) erfolgreich gedruckt";
+            Log.Information(message);
+            return PrintResponse.Ok(message);
+        }
+        else
+        {
+            var message = $"Druck fehlgeschlagen: {result}";
+            Log.Error(message);
+            return PrintResponse.Error(message);
+        }
+    }
+
+    private Task<PrintResponse> RunOnUiThreadAsync(Func<Task<PrintResponse>> action)
+    {
+        var tcs = new TaskCompletionSource<PrintResponse>();
+
+        _hostForm!.BeginInvoke(async () =>
+        {
+            try
+            {
+                var result = await action();
+                tcs.TrySetResult(result);
+            }
+            catch (Exception ex)
+            {
+                tcs.TrySetException(ex);
+            }
+        });
+
+        return tcs.Task;
     }
 
     private static string GetEffectivePrinterName(PrintConfiguration config)
