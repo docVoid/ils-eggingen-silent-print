@@ -98,10 +98,10 @@ Die Konfiguration wird unter `%APPDATA%\IlsEggingenSilentPrint\appsettings.json`
 | PrinterName  | ""       | Drucker (leer=Standard) |
 | Port         | 9150     | HTTP-Server Port        |
 | AutoStart    | true     | Windows-Autostart       |
-| MarginTop    | 10       | Rand oben (mm)          |
-| MarginBottom | 10       | Rand unten (mm)         |
-| MarginLeft   | 10       | Rand links (mm)         |
-| MarginRight  | 10       | Rand rechts (mm)        |
+| MarginTop    | 3        | Rand oben (mm)          |
+| MarginBottom | 3        | Rand unten (mm)         |
+| MarginLeft   | 3        | Rand links (mm)         |
+| MarginRight  | 3        | Rand rechts (mm)        |
 
 ## Lizenz
 
