@@ -105,4 +105,8 @@ Die Konfiguration wird unter `%APPDATA%\IlsEggingenSilentPrint\appsettings.json`
 
 ## Lizenz
 
-Proprietär – ILS Eggingen
+Dieses Projekt ist nach MIT lizenziert. Siehe [Lizenz](LICENSE)
+
+##
+
+Programmiert mit ❤️ von [void](https://www.github.com/docVoid)
