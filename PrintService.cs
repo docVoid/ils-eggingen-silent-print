@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Serilog;
@@ -9,8 +10,16 @@ public sealed class PrintService : IPrintService
     private readonly IPrintConfigurationManager _configManager;
     private WebView2? _webView;
     private Form? _hostForm;
-    private readonly SemaphoreSlim _printSemaphore = new(1, 1);
+    private readonly ConcurrentQueue<PrintJob> _printQueue = new();
+    private System.Windows.Forms.Timer? _queueTimer;
+    private bool _processingQueue;
     private bool _isInitialized;
+
+    private sealed record PrintJob(
+        TaskCompletionSource<PrintResponse> Tcs,
+        string Html,
+        int Copies,
+        CancellationToken CancellationToken);
 
     public bool IsInitialized => _isInitialized;
 
@@ -49,6 +58,13 @@ public sealed class PrintService : IPrintService
 
         var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
         await _webView.EnsureCoreWebView2Async(env);
+
+        // Läuft nativ auf dem UI-Thread (kein Cross-Thread-Invoke nötig) und verarbeitet
+        // die Druckaufträge seriell. Testdruck (UI-Thread) und HTTP-Druck (Kestrel-Thread)
+        // durchlaufen dadurch denselben Codepfad statt über BeginInvoke zu marshallen.
+        _queueTimer = new System.Windows.Forms.Timer { Interval = 150 };
+        _queueTimer.Tick += OnQueueTimerTick;
+        _queueTimer.Start();
 
         _isInitialized = true;
         Log.Information("WebView2 erfolgreich initialisiert");
@@ -97,38 +113,55 @@ public sealed class PrintService : IPrintService
         }
     }
 
-    public async Task<PrintResponse> PrintHtmlAsync(string html, int copies, CancellationToken cancellationToken = default)
+    public Task<PrintResponse> PrintHtmlAsync(string html, int copies, CancellationToken cancellationToken = default)
     {
         if (!_isInitialized || _webView?.CoreWebView2 is null || _hostForm is null)
         {
-            return PrintResponse.Error("WebView2 ist nicht initialisiert");
+            return Task.FromResult(PrintResponse.Error("WebView2 ist nicht initialisiert"));
         }
 
-        await _printSemaphore.WaitAsync(cancellationToken);
+        // Wird unabhängig vom aufrufenden Thread (UI-Thread beim Testdruck, Kestrel-Thread
+        // bei /print) in die Queue eingereiht und ausschließlich vom Timer auf dem UI-Thread
+        // abgearbeitet.
+        var tcs = new TaskCompletionSource<PrintResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _printQueue.Enqueue(new PrintJob(tcs, html, copies, cancellationToken));
+        return tcs.Task;
+    }
+
+    private async void OnQueueTimerTick(object? sender, EventArgs e)
+    {
+        if (_processingQueue) return;
+        _processingQueue = true;
         try
         {
-            // WebView2 muss auf dem UI-Thread bedient werden.
-            // Wenn wir von einem anderen Thread kommen (z.B. Kestrel), per Invoke weiterleiten.
-            if (_hostForm.InvokeRequired)
+            while (_printQueue.TryDequeue(out var job))
             {
-                return await RunOnUiThreadAsync(() => ExecutePrintAsync(html, copies, cancellationToken));
-            }
+                if (job.CancellationToken.IsCancellationRequested)
+                {
+                    job.Tcs.TrySetResult(PrintResponse.Error("Druckauftrag wurde abgebrochen"));
+                    continue;
+                }
 
-            return await ExecutePrintAsync(html, copies, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            Log.Warning("Druckauftrag wurde abgebrochen");
-            return PrintResponse.Error("Druckauftrag wurde abgebrochen");
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Fehler beim Drucken");
-            return PrintResponse.Error($"Druckfehler: {ex.Message}");
+                try
+                {
+                    var result = await ExecutePrintAsync(job.Html, job.Copies, job.CancellationToken);
+                    job.Tcs.TrySetResult(result);
+                }
+                catch (OperationCanceledException)
+                {
+                    Log.Warning("Druckauftrag wurde abgebrochen");
+                    job.Tcs.TrySetResult(PrintResponse.Error("Druckauftrag wurde abgebrochen"));
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Fehler beim Drucken");
+                    job.Tcs.TrySetResult(PrintResponse.Error($"Druckfehler: {ex.Message}"));
+                }
+            }
         }
         finally
         {
-            _printSemaphore.Release();
+            _processingQueue = false;
         }
     }
 
@@ -196,26 +229,6 @@ public sealed class PrintService : IPrintService
         }
     }
 
-    private Task<PrintResponse> RunOnUiThreadAsync(Func<Task<PrintResponse>> action)
-    {
-        var tcs = new TaskCompletionSource<PrintResponse>();
-
-        _hostForm!.BeginInvoke(async () =>
-        {
-            try
-            {
-                var result = await action();
-                tcs.TrySetResult(result);
-            }
-            catch (Exception ex)
-            {
-                tcs.TrySetException(ex);
-            }
-        });
-
-        return tcs.Task;
-    }
-
     private static string GetEffectivePrinterName(PrintConfiguration config)
     {
         if (!string.IsNullOrWhiteSpace(config.PrinterName))
@@ -228,7 +241,8 @@ public sealed class PrintService : IPrintService
 
     public void Dispose()
     {
-        _printSemaphore.Dispose();
+        _queueTimer?.Stop();
+        _queueTimer?.Dispose();
         _webView?.Dispose();
         _hostForm?.Dispose();
     }
