@@ -59,9 +59,6 @@ public sealed class PrintService : IPrintService
         var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
         await _webView.EnsureCoreWebView2Async(env);
 
-        // Läuft nativ auf dem UI-Thread (kein Cross-Thread-Invoke nötig) und verarbeitet
-        // die Druckaufträge seriell. Testdruck (UI-Thread) und HTTP-Druck (Kestrel-Thread)
-        // durchlaufen dadurch denselben Codepfad statt über BeginInvoke zu marshallen.
         _queueTimer = new System.Windows.Forms.Timer { Interval = 150 };
         _queueTimer.Tick += OnQueueTimerTick;
         _queueTimer.Start();
@@ -70,10 +67,6 @@ public sealed class PrintService : IPrintService
         Log.Information("WebView2 erfolgreich initialisiert");
     }
 
-    /// <summary>
-    /// Synchrone Initialisierung für den STA-Thread.
-    /// Nutzt eine temporäre Nachrichtenpumpe, um Deadlocks zu vermeiden.
-    /// </summary>
     public void InitializeSync()
     {
         if (_isInitialized) return;
@@ -120,9 +113,6 @@ public sealed class PrintService : IPrintService
             return Task.FromResult(PrintResponse.Error("WebView2 ist nicht initialisiert"));
         }
 
-        // Wird unabhängig vom aufrufenden Thread (UI-Thread beim Testdruck, Kestrel-Thread
-        // bei /print) in die Queue eingereiht und ausschließlich vom Timer auf dem UI-Thread
-        // abgearbeitet.
         var tcs = new TaskCompletionSource<PrintResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
         _printQueue.Enqueue(new PrintJob(tcs, html, copies, cancellationToken));
         return tcs.Task;
@@ -196,7 +186,6 @@ public sealed class PrintService : IPrintService
             _webView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
         }
 
-        // Kurz warten, damit das Rendering abgeschlossen ist
         await Task.Delay(200, cancellationToken);
 
         var printSettings = _webView.CoreWebView2.Environment.CreatePrintSettings();
