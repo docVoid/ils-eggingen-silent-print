@@ -120,7 +120,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     private static void ShowAbout()
     {
         MessageBox.Show(
-            "ILS Eggingen Silent Print\n\nVersion 1.0.0\n\nLokaler Druckserver für die ILS Eggingen Webapp.\nDruckt Alarmdrucke ohne Benutzerinteraktion.",
+            "ILS Eggingen Silent Print\n\nVersion 1.0.1\n\nLokaler Druckserver für die ILS Eggingen Webapp.\nDruckt Alarmdrucke ohne Benutzerinteraktion.",
             "Über ILS Eggingen Silent Print",
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
